@@ -1,0 +1,3 @@
+spring.data.mongodb:
+  database: customers # Database name.
+  uri: mongodb://mongo:27017 # Mongo database URI. Cannot be set with host, port and credentials.

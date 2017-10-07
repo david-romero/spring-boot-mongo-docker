@@ -1,0 +1,258 @@
+---
+tags: [docker,spring boot]
+projects: [spring-boot]
+---
+:spring_version: current
+:toc:
+:project_id: gs-spring-boot-docker
+:icons: font
+:source-highlighter: prettify
+
+This guide walks you through the process of building a https://docker.com[Docker] image for running a Spring Boot application.
+
+== What you'll build
+
+https://docker.com[Docker] is a Linux container management toolkit with a "social" aspect, allowing users to publish container images and consume those published by others. A Docker image is a recipe for running a containerized process, and in this guide we will build one for a simple Spring boot application.
+
+== What you'll need
+:java_version: 1.8
+include::https://raw.githubusercontent.com/spring-guides/getting-started-macros/master/prereq_editor_jdk_buildtools.adoc[]
+
+If you are NOT using a Linux machine, you will need a virtualized server. By installing VirtualBox, other tools like the Mac's boot2docker, can seamlessly manage it for you. Visit https://www.virtualbox.org/wiki/Downloads[VirtualBox's download site] and pick the version for your machine. Download and install. Don't worry about actually running it.
+
+You will also need https://docker.com[Docker], which only runs on 64-bit machines. See https://docs.docker.com/installation/#installation for details on setting Docker up for your machine. Before proceeding further, verify you can run `docker` commands from the shell. If you are using boot2docker you need to run that *first*.
+
+include::https://raw.githubusercontent.com/spring-guides/getting-started-macros/master/how_to_complete_this_guide.adoc[]
+
+include::https://raw.githubusercontent.com/spring-guides/getting-started-macros/master/hide-show-gradle.adoc[]
+
+include::https://raw.githubusercontent.com/spring-guides/getting-started-macros/master/hide-show-maven.adoc[]
+
+include::https://raw.githubusercontent.com/spring-guides/getting-started-macros/master/hide-show-sts.adoc[]
+
+[[initial]]
+== Set up a Spring Boot app
+
+Now you can create a simple application.
+
+`src/main/java/hello/Application.java`
+[source,java]
+----
+include::complete/src/main/java/hello/Application.java[]
+----
+
+The class is flagged as a `@SpringBootApplication` and as a `@RestController`, meaning it's ready for use by Spring MVC to handle web requests. `@RequestMapping` maps `/` to the `home()` method which just sends a 'Hello World' response.  The `main()` method uses Spring Boot's `SpringApplication.run()` method to launch an application.
+
+Now we can run the application without the Docker container (i.e. in the host OS).
+
+If you are using Gradle, execute:
+
+[subs="attributes"]
+----
+./gradlew build && java -jar build/libs/{project_id}-0.1.0.jar
+----
+
+If you are using Maven, execute:
+
+[subs="attributes"]
+----
+./mvnw package && java -jar target/{project_id}-0.1.0.jar
+----
+
+and go to http://localhost:8080[localhost:8080] to see your "Hello Docker World" message.
+
+== Containerize It
+
+Docker has a simple https://docs.docker.com/reference/builder/["Dockerfile"] file format that it uses to specify the "layers" of an image. So let's go ahead and create a Dockerfile in our Spring Boot project:
+
+`Dockerfile`
+[source,java]
+----
+include::complete/Dockerfile[]
+----
+
+This Dockerfile is very simple, but that's all you need to run a Spring Boot app with no frills: just Java and a JAR file. The project JAR file is `ADDed` to the container as "app.jar" and then executed in the `ENTRYPOINT`.
+
+NOTE: We added a `VOLUME` pointing to "/tmp" because that is where a Spring Boot application creates working directories for Tomcat by default. The effect is to create a temporary file on your host under "/var/lib/docker" and link it to the container under "/tmp". This step is optional for the simple app that we wrote here, but can be necessary for other Spring Boot applications if they need to actually write in the filesystem.
+
+NOTE: To reduce http://wiki.apache.org/tomcat/HowTo/FasterStartUp#Entropy_Source[Tomcat startup time] we added a system property pointing to "/dev/urandom" as a source of entropy.
+
+NOTE: if you are using boot2docker you need to run it *first* before you do anything with the Docker command line or with the build tools (it runs a daemon process that handles the work for you in a virtual machine).
+
+To build the image you can use some tooling for Maven or Gradle from the community (big thanks to https://github.com/Transmode/gradle-docker[Transmode] and https://github.com/spotify/dockerfile-maven-plugin[Spotify] for making those tools available).
+
+=== Build a Docker Image with Maven
+In the Maven `pom.xml` you should add a new plugin like this (see https://github.com/spotify/dockerfile-maven-plugin[the plugin documentation] for more options):
+:
+
+`pom.xml`
+[source,xml,indent=0]
+----
+    <properties>
+  	    <docker.image.prefix>springio</docker.image.prefix>
+    </properties>
+    <build>
+        <plugins>
+include::complete/pom.xml[tag=plugin]
+        </plugins>
+    </build>
+----
+
+The configuration specifies 2 things:
+
+* The repository with the image name, which will end up here as `springio/gs-spring-boot-docker`
+* Optionally, the image tag, which ends up as latest if not specified.  It can be set to the artifact id if desired.
+
+IMPORTANT: Before proceeding with the following steps (which use Docker's CLI tools), make sure Docker is properly running by typing `docker ps`. If you get an error message, something may not be set up correctly. Using a Mac? Add `$(boot2docker shellinit 2> /dev/null)` to the bottom of your `.bash_profile` (or similar env-setting configuration file) and refresh your shell to ensure proper environment variables are configured.
+
+You can build a tagged docker image using the command line like this:
+
+----
+$ ./mvnw install dockerfile:build
+----
+
+And you can push the image to dockerhub with `./mvnw dockerfile:push`.
+
+NOTE: You don't have to push your newly minted Docker image to actually run it. Moreover the "push" command will fail if you aren't a member of the "springio" organization on Dockerhub. Change the build configuration and the command line to your own username instead of "springio" to make it actually work.
+
+NOTE: you can make `dockerfile:push` automatically run in the install or deploy lifecycle phases by adding it to the plugin configuration.
+
+`pom.xml`
+[source,xml,indent=0]
+----
+				<executions>
+					<execution>
+						<id>default</id>
+						<phase>install</phase>
+						<goals>
+							<goal>build</goal>
+							<goal>push</goal>
+						</goals>
+					</execution>
+				</executions>
+----
+
+=== Build a Docker Image with Gradle
+If you are using Gradle you need to add a new plugin like this:
+
+`build.gradle`
+[source,groovy]
+----
+buildscript {
+    ...
+    dependencies {
+        ...
+include::complete/build.gradle[tag=build]
+    }
+}
+
+group = 'springio'
+
+...
+include::complete/build.gradle[tag=plugin]
+
+include::complete/build.gradle[tag=task]
+----
+
+The configuration specifies 3 things:
+
+* the image name (or tag) is set up from the jar file properties, which will end up here as `springio/gs-spring-boot-docker`
+* the location of the Dockerfile
+* the jar file is copied from the build directory to the same location that Maven leaves it - we only need to do this for the guide so that we can use the same `Dockerfile` for Maven and Gradle
+
+You can build a tagged docker image and then push it to a remote repository with Gradle in one command:
+
+----
+$ ./gradlew build buildDocker
+----
+
+=== After the Push
+
+A "docker push" will fail for you (unless you are part of the "springio" organization at Dockerhub), but if you change the configuration to match your own docker ID then it should succeed, and you will have a new tagged, deployed image.
+
+[NOTE]
+====
+You do NOT have to register with docker or publish anything to run a docker image. You still have a locally tagged image, and you can run it like this:
+
+----
+$ docker run -p 8080:8080 -t springio/gs-spring-boot-docker
+....
+2015-03-31 13:25:48.035  INFO 1 --- [           main] s.b.c.e.t.TomcatEmbeddedServletContainer : Tomcat started on port(s): 8080 (http)
+2015-03-31 13:25:48.037  INFO 1 --- [           main] hello.Application                        : Started Application in 5.613 seconds (JVM running for 7.293)
+----
+====
+
+The application is then available on http://localhost:8080 (visit that and it says "Hello Docker World"). To make sure the whole process is really working, change the prefix from "springio" to something else (e.g. `${env.USER}`) and go through it again from the build through to the docker run.
+
+[NOTE]
+====
+When using a Mac with boot2docker, you typically see things like this at startup:
+
+[source]
+----
+Docker client to the Docker daemon, please set:
+    export DOCKER_CERT_PATH=/Users/gturnquist/.boot2docker/certs/boot2docker-vm
+    export DOCKER_TLS_VERIFY=1
+    export DOCKER_HOST=tcp://192.168.59.103:2376
+----
+
+To see the app, you must visit the IP address in DOCKER_HOST instead of localhost. In this case,
+http://192.168.59.103:8080, the public facing IP of the VM.
+====
+
+When it is running you can see in the list of containers, e.g:
+
+----
+$ docker ps
+CONTAINER ID        IMAGE                             COMMAND                CREATED             STATUS              PORTS                    NAMES
+81c723d22865        springio/gs-spring-boot-docker:latest   "java -jar /app.jar"   34 seconds ago      Up 33 seconds       0.0.0.0:8080->8080/tcp   goofy_brown
+----
+
+and to shut it down again you can `docker stop` with the container ID from the listing above (yours will be different):
+
+----
+$ docker stop 81c723d22865
+81c723d22865
+----
+
+If you like you can also delete the container (it is persisted in your filesystem under `/var/lib/docker` somewhere) when you are finished with it:
+
+----
+$ docker rm 81c723d22865
+----
+
+=== Using Spring Profiles
+Running your freshly minted Docker image with Spring profiles is as easy as passing an environment variable to the Docker run command
+
+----
+$ docker run -e "SPRING_PROFILES_ACTIVE=prod" -p 8080:8080 -t springio/gs-spring-boot-docker
+----
+
+or
+
+----
+$ docker run -e "SPRING_PROFILES_ACTIVE=dev" -p 8080:8080 -t springio/gs-spring-boot-docker
+----
+
+=== Debugging the application in a Docker container
+To debug the application  http://docs.oracle.com/javase/8/docs/technotes/guides/jpda/conninv.html#Invocation[JPDA Transport] can be used. So we'll treat the container like a remote server.
+To enable this feature pass a java agent settings in JAVA_OPTS variable and map agent's port
+ to localhost during a container run. With the https://www.docker.com/products/docker#/mac[Docker for Mac] there is limitation due to that we can't
+ access container by IP without https://github.com/docker/for-mac/issues/171[black magic usage].
+
+----
+$ docker run -e "JAVA_OPTS=-agentlib:jdwp=transport=dt_socket,address=5005,server=y,suspend=n" -p 8080:8080 -p 5005:5005 -t springio/gs-spring-boot-docker
+----
+
+== Summary
+
+Congratulations! You've just created a Docker container for a Spring Boot app! Spring Boot apps run on port 8080 inside the container by default and we mapped that to the same port on the host using "-p" on the command line.
+
+== See Also
+
+The following guides may also be helpful:
+
+* https://spring.io/guides/gs/serving-web-content/[Serving Web Content with Spring MVC]
+* https://spring.io/guides/gs/spring-boot/[Building an Application with Spring Boot]
+
+include::https://raw.githubusercontent.com/spring-guides/getting-started-macros/master/footer.adoc[]

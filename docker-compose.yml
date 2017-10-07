@@ -1,0 +1,33 @@
+version: "2.1"
+services:
+  mongo:
+    image: mongo:3.2.4
+    ports:
+    - 27017:27017
+    command: --smallfiles
+    
+  mongo-init:
+    build: ./mongo-init
+    links:
+      - mongo
+      
+  mongo-client:
+    image: mongoclient/mongoclient
+    ports:
+    - 3030:3000
+    environment:
+      - MONGOCLIENT_DEFAULT_CONNECTION_URL=mongodb://mongo:27017
+    links:
+      - mongo
+    
+# APP  ***************************************************************************************
+  spring-boot-mongo-docker:
+    image: davromalc/spring-boot-mongo-docker
+    ports:
+    - 8080:8080
+    links:
+    - mongo
+    entrypoint: "java -Djava.security.egd=file:/dev/./urandom -jar /app.jar"
+    
+    
+
